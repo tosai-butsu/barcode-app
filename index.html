@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>バーコード収集</title>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 16px;
+      background: #f5f5f5;
+      color: #222;
+    }
+    .wrap {
+      max-width: 620px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 26px;
+      text-align: center;
+      margin: 8px 0 16px;
+    }
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    }
+    #reader {
+      width: 100%;
+    }
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 10px;
+      font-size: 20px;
+      font-weight: 700;
+      background: #1769e0;
+      color: white;
+    }
+    button.secondary {
+      background: #555;
+    }
+    button.danger {
+      background: #c62828;
+    }
+    #latest {
+      font-size: 22px;
+      font-weight: 700;
+      word-break: break-all;
+    }
+    .count {
+      text-align: center;
+      font-size: 22px;
+      font-weight: 700;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      border-bottom: 1px solid #ddd;
+      padding: 8px 4px;
+      text-align: left;
+    }
+    .note {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>バーコード収集</h1>
+
+  <div class="card">
+    <div id="reader"></div>
+    <button id="startBtn">カメラを開始</button>
+    <button id="stopBtn" class="secondary">カメラを停止</button>
+  </div>
+
+  <div class="card">
+    <div>直近のバーコード</div>
+    <div id="latest">未読取</div>
+    <div class="count">読取件数：<span id="count">0</span>件</div>
+  </div>
+
+  <div class="card">
+    <button id="csvBtn">終了してCSV保存</button>
+    <button id="clearBtn" class="danger">全データを削除</button>
+    <p class="note">
+      CSVには「バーコード、数量1、読取日時」を保存します。
+      同じバーコードを続けて読んだ場合、2秒以内の重複は登録しません。
+    </p>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>バーコード</th><th>数量</th><th>時間</th></tr>
+      </thead>
+      <tbody id="history"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const STORAGE_KEY = "barcode_records_v1";
+  let records = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  let scanner = null;
+  let lastCode = "";
+  let lastScanAt = 0;
+
+  const latestEl = document.getElementById("latest");
+  const countEl = document.getElementById("count");
+  const historyEl = document.getElementById("history");
+
+  function pad(n) {
+    return String(n).padStart(2, "0");
+  }
+
+  function formatDate(d) {
+    return d.getFullYear() + "/" +
+      pad(d.getMonth() + 1) + "/" +
+      pad(d.getDate()) + " " +
+      pad(d.getHours()) + ":" +
+      pad(d.getMinutes()) + ":" +
+      pad(d.getSeconds());
+  }
+
+  function saveRecords() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  }
+
+  function render() {
+    countEl.textContent = records.length;
+    latestEl.textContent = records.length ? records[records.length - 1].barcode : "未読取";
+    historyEl.innerHTML = "";
+
+    records.slice().reverse().slice(0, 20).forEach(r => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${escapeHtml(r.barcode)}</td><td>1</td><td>${escapeHtml(r.time)}</td>`;
+      historyEl.appendChild(tr);
+    });
+  }
+
+  function escapeHtml(text) {
+    return String(text)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function onScanSuccess(decodedText) {
+    const nowMs = Date.now();
+
+    if (decodedText === lastCode && nowMs - lastScanAt < 2000) {
+      return;
+    }
+
+    lastCode = decodedText;
+    lastScanAt = nowMs;
+
+    const row = {
+      barcode: decodedText,
+      qty: 1,
+      time: formatDate(new Date())
+    };
+
+    records.push(row);
+    saveRecords();
+    render();
+
+    if (navigator.vibrate) {
+      navigator.vibrate(120);
+    }
+  }
+
+  async function startCamera() {
+    try {
+      if (scanner) return;
+
+      scanner = new Html5Qrcode("reader");
+      await scanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 280, height: 150 },
+          aspectRatio: 1.7778
+        },
+        onScanSuccess,
+        () => {}
+      );
+    } catch (e) {
+      scanner = null;
+      alert("カメラを開始できませんでした。Safariのカメラ許可を確認してください。");
+    }
+  }
+
+  async function stopCamera() {
+    if (!scanner) return;
+
+    try {
+      await scanner.stop();
+      await scanner.clear();
+    } catch (e) {
+      console.log(e);
+    }
+    scanner = null;
+  }
+
+  function csvEscape(value) {
+    const s = String(value);
+    return '"' + s.replaceAll('"', '""') + '"';
+  }
+
+  function downloadCsv() {
+    if (records.length === 0) {
+      alert("保存するデータがありません。");
+      return;
+    }
+
+    const lines = [
+      ["バーコード", "数量", "読取日時"],
+      ...records.map(r => [r.barcode, 1, r.time])
+    ];
+
+    const csv = "\uFEFF" + lines
+      .map(row => row.map(csvEscape).join(","))
+      .join("\r\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const now = new Date();
+
+    a.href = url;
+    a.download =
+      "バーコード記録_" +
+      now.getFullYear() +
+      pad(now.getMonth() + 1) +
+      pad(now.getDate()) + "_" +
+      pad(now.getHours()) +
+      pad(now.getMinutes()) +
+      pad(now.getSeconds()) +
+      ".csv";
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById("startBtn").addEventListener("click", startCamera);
+  document.getElementById("stopBtn").addEventListener("click", stopCamera);
+  document.getElementById("csvBtn").addEventListener("click", downloadCsv);
+
+  document.getElementById("clearBtn").addEventListener("click", () => {
+    if (!confirm("保存中の全データを削除しますか？")) return;
+    records = [];
+    saveRecords();
+    render();
+  });
+
+  render();
+</script>
+</body>
+</html>
