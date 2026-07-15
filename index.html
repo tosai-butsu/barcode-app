@@ -49,7 +49,36 @@ function esc(s){return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').
 function render(){countEl.textContent=records.length;latestEl.textContent=records.length?records[records.length-1].barcode:'未読取';historyEl.innerHTML='';records.slice().reverse().slice(0,30).forEach(r=>{const tr=document.createElement('tr');tr.innerHTML='<td>'+esc(r.barcode)+'</td><td>1</td><td>'+esc(r.time)+'</td>';historyEl.appendChild(tr)})}
 function prepareAudio(){try{if(!audioContext)audioContext=new(window.AudioContext||window.webkitAudioContext)();if(audioContext.state==='suspended')audioContext.resume()}catch(e){console.log(e)}}
 function playBeep(){try{prepareAudio();const o=audioContext.createOscillator(),g=audioContext.createGain();o.type='square';o.frequency.setValueAtTime(1650,audioContext.currentTime);g.gain.setValueAtTime(.0001,audioContext.currentTime);g.gain.exponentialRampToValueAtTime(.28,audioContext.currentTime+.01);g.gain.exponentialRampToValueAtTime(.0001,audioContext.currentTime+.11);o.connect(g);g.connect(audioContext.destination);o.start();o.stop(audioContext.currentTime+.12)}catch(e){console.log(e)}}
-function onScanSuccess(decodedText){records.push({barcode:decodedText,qty:1,time:formatDate(new Date())});saveRecords();render();playBeep();document.body.classList.add('scan-ok');setTimeout(()=>document.body.classList.remove('scan-ok'),220);if(navigator.vibrate)navigator.vibrate(120)}
+let scanLock = false;
+
+function onScanSuccess(decodedText) {
+
+    if (scanLock) return;
+
+    scanLock = true;
+
+    const row = {
+        barcode: decodedText,
+        qty: 1,
+        time: formatDate(new Date())
+    };
+
+    records.push(row);
+    saveRecords();
+    render();
+
+    playBeep();
+    flashSuccess();
+
+    if (navigator.vibrate) {
+        navigator.vibrate(120);
+    }
+
+    // 0.5秒後に次の読取を許可
+    setTimeout(() => {
+        scanLock = false;
+    }, 500);
+}
 async function startCamera(){try{if(scanner)return;prepareAudio();scanner=new Html5Qrcode('reader');await scanner.start({facingMode:'environment'},{fps:12,qrbox:{width:300,height:160},aspectRatio:1.7778,formatsToSupport:[Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.ITF,Html5QrcodeSupportedFormats.QR_CODE]},onScanSuccess,()=>{});statusEl.textContent='読取中'}catch(e){scanner=null;statusEl.textContent='開始できませんでした';alert('カメラを開始できませんでした。Safariのカメラ許可とHTTPS接続を確認してください。')}}
 async function stopCamera(){if(!scanner){statusEl.textContent='停止中';return}try{await scanner.stop();await scanner.clear()}catch(e){console.log(e)}scanner=null;statusEl.textContent='停止中'}
 function csvEscape(v){return '"'+String(v).replaceAll('"','""')+'"'}
