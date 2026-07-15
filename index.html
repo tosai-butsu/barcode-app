@@ -1,89 +1,1193 @@
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  >
+
   <meta name="apple-mobile-web-app-capable" content="yes">
+
   <title>バーコード収集</title>
-  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <!-- バーコード読取用ライブラリ -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
   <style>
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;padding:16px;background:#f5f5f5;color:#222;transition:background-color .18s}
-    body.scan-ok{background:#b9f6ca}.wrap{max-width:620px;margin:0 auto}h1{text-align:center;font-size:26px}
-    .card{background:#fff;border-radius:14px;padding:14px;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-    #reader{width:100%}button{width:100%;border:0;border-radius:12px;padding:16px;margin-top:10px;font-size:20px;font-weight:700;background:#1769e0;color:#fff}
-    button.secondary{background:#555}button.danger{background:#c62828}#latest{font-size:24px;font-weight:700;word-break:break-all;min-height:34px}
-    .count,#status{text-align:center;font-size:20px;font-weight:700;margin-top:10px}table{width:100%;border-collapse:collapse;font-size:14px}
-    th,td{border-bottom:1px solid #ddd;padding:8px 4px;text-align:left}.note{font-size:13px;color:#666;line-height:1.6}
-  </style>
-</head>
-<body>
-<div class="wrap">
-  <h1>バーコード収集</h1>
-  <div class="card">
-    <div id="reader"></div>
-    <div id="status">停止中</div>
-    <button id="startBtn">カメラを開始</button>
-    <button id="stopBtn" class="secondary">カメラを停止</button>
-  </div>
-  <div class="card">
-    <div>直近のバーコード</div>
-    <div id="latest">未読取</div>
-    <div class="count">読取件数：<span id="count">0</span>件</div>
-  </div>
-  <div class="card">
-    <button id="csvBtn">終了してCSV保存</button>
-    <button id="clearBtn" class="danger">全データを削除</button>
-    <p class="note">JAN-13、JAN-8、Code128、Code39、ITF、QRコードに対応。重複制限はありません。読取成功時に音が鳴り、画面が一瞬緑になります。</p>
-  </div>
-  <div class="card"><table><thead><tr><th>バーコード</th><th>数量</th><th>時間</th></tr></thead><tbody id="history"></tbody></table></div>
-</div>
-<script>
-const STORAGE_KEY='barcode_records_v2';
-let records=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
-let scanner=null,audioContext=null;
-const latestEl=document.getElementById('latest'),countEl=document.getElementById('count'),historyEl=document.getElementById('history'),statusEl=document.getElementById('status');
-function pad(n){return String(n).padStart(2,'0')}
-function formatDate(d){return d.getFullYear()+'/'+pad(d.getMonth()+1)+'/'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())}
-function saveRecords(){localStorage.setItem(STORAGE_KEY,JSON.stringify(records))}
-function esc(s){return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;')}
-function render(){countEl.textContent=records.length;latestEl.textContent=records.length?records[records.length-1].barcode:'未読取';historyEl.innerHTML='';records.slice().reverse().slice(0,30).forEach(r=>{const tr=document.createElement('tr');tr.innerHTML='<td>'+esc(r.barcode)+'</td><td>1</td><td>'+esc(r.time)+'</td>';historyEl.appendChild(tr)})}
-function prepareAudio(){try{if(!audioContext)audioContext=new(window.AudioContext||window.webkitAudioContext)();if(audioContext.state==='suspended')audioContext.resume()}catch(e){console.log(e)}}
-function playBeep(){try{prepareAudio();const o=audioContext.createOscillator(),g=audioContext.createGain();o.type='square';o.frequency.setValueAtTime(1650,audioContext.currentTime);g.gain.setValueAtTime(.0001,audioContext.currentTime);g.gain.exponentialRampToValueAtTime(.28,audioContext.currentTime+.01);g.gain.exponentialRampToValueAtTime(.0001,audioContext.currentTime+.11);o.connect(g);g.connect(audioContext.destination);o.start();o.stop(audioContext.currentTime+.12)}catch(e){console.log(e)}}
-let scanLock = false;
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
 
-function onScanSuccess(decodedText) {
+      background-color: #f3f3f3;
+      color: #222;
 
-    if (scanLock) return;
-
-    scanLock = true;
-
-    const row = {
-        barcode: decodedText,
-        qty: 1,
-        time: formatDate(new Date())
-    };
-
-    records.push(row);
-    saveRecords();
-    render();
-
-    playBeep();
-    flashSuccess();
-
-    if (navigator.vibrate) {
-        navigator.vibrate(120);
+      transition: background-color 0.2s;
     }
 
-    // 0.5秒後に次の読取を許可
-    setTimeout(() => {
-        scanLock = false;
-    }, 500);
-}
-async function startCamera(){try{if(scanner)return;prepareAudio();scanner=new Html5Qrcode('reader');await scanner.start({facingMode:'environment'},{fps:12,qrbox:{width:300,height:160},aspectRatio:1.7778,formatsToSupport:[Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.ITF,Html5QrcodeSupportedFormats.QR_CODE]},onScanSuccess,()=>{});statusEl.textContent='読取中'}catch(e){scanner=null;statusEl.textContent='開始できませんでした';alert('カメラを開始できませんでした。Safariのカメラ許可とHTTPS接続を確認してください。')}}
-async function stopCamera(){if(!scanner){statusEl.textContent='停止中';return}try{await scanner.stop();await scanner.clear()}catch(e){console.log(e)}scanner=null;statusEl.textContent='停止中'}
-function csvEscape(v){return '"'+String(v).replaceAll('"','""')+'"'}
-function downloadCsv(){if(records.length===0){alert('保存するデータがありません。');return}const lines=[['バーコード','数量','読取日時'],...records.map(r=>[r.barcode,1,r.time])];const csv='\uFEFF'+lines.map(row=>row.map(csvEscape).join(',')).join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a'),now=new Date();a.href=url;a.download='バーコード記録_'+now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+'_'+pad(now.getHours())+pad(now.getMinutes())+pad(now.getSeconds())+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
-document.getElementById('startBtn').addEventListener('click',startCamera);document.getElementById('stopBtn').addEventListener('click',stopCamera);document.getElementById('csvBtn').addEventListener('click',downloadCsv);document.getElementById('clearBtn').addEventListener('click',()=>{if(confirm('保存中の全データを削除しますか？')){records=[];saveRecords();render()}});render();
-</script>
+    body.scan-ok {
+      background-color: #b9f6ca;
+    }
+
+    .container {
+      max-width: 650px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 5px 0 15px;
+      text-align: center;
+      font-size: 27px;
+    }
+
+    .card {
+      margin-bottom: 14px;
+      padding: 15px;
+
+      background-color: white;
+      border-radius: 14px;
+
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    #reader {
+      width: 100%;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 16px;
+
+      border: none;
+      border-radius: 12px;
+
+      background-color: #1769e0;
+      color: white;
+
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    button:disabled {
+      background-color: #999;
+    }
+
+    button.stop {
+      background-color: #555;
+    }
+
+    button.delete {
+      background-color: #c62828;
+    }
+
+    #status {
+      margin-top: 10px;
+      text-align: center;
+      font-size: 19px;
+      font-weight: bold;
+    }
+
+    #latest {
+      min-height: 35px;
+      margin-top: 5px;
+
+      font-size: 25px;
+      font-weight: bold;
+
+      word-break: break-all;
+    }
+
+    .count {
+      margin-top: 12px;
+      text-align: center;
+
+      font-size: 23px;
+      font-weight: bold;
+    }
+
+    .note {
+      margin-bottom: 0;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #666;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 8px 4px;
+
+      border-bottom: 1px solid #ddd;
+
+      text-align: left;
+    }
+
+    th:nth-child(2),
+    td:nth-child(2) {
+      width: 45px;
+      text-align: center;
+    }
+
+    th:nth-child(3),
+    td:nth-child(3) {
+      width: 130px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+
+    <h1>バーコード収集</h1>
+
+    <div class="card">
+
+      <div id="reader"></div>
+
+      <div id="status">
+        停止中
+      </div>
+
+      <button id="startButton">
+        カメラを開始
+      </button>
+
+      <button
+        id="stopButton"
+        class="stop"
+      >
+        カメラを停止
+      </button>
+
+    </div>
+
+    <div class="card">
+
+      <div>
+        直近のバーコード
+      </div>
+
+      <div id="latest">
+        未読取
+      </div>
+
+      <div class="count">
+        読取件数：
+        <span id="count">0</span>
+        件
+      </div>
+
+    </div>
+
+    <div class="card">
+
+      <button id="csvButton">
+        終了してCSV保存
+      </button>
+
+      <button
+        id="deleteButton"
+        class="delete"
+      >
+        全データを削除
+      </button>
+
+      <p class="note">
+        読み取り後、0.5秒間は次の読み取りを受け付けません。<br>
+        0.5秒経過後は、同じバーコードでも再度記録できます。<br>
+        数量は常に「1」、日時は自動記録されます。<br>
+        ITF、JAN、Code128、Code39、QRコードに対応しています。
+      </p>
+
+    </div>
+
+    <div class="card">
+
+      <table>
+
+        <thead>
+          <tr>
+            <th>バーコード</th>
+            <th>数量</th>
+            <th>読取日時</th>
+          </tr>
+        </thead>
+
+        <tbody id="history">
+        </tbody>
+
+      </table>
+
+    </div>
+
+  </div>
+
+  <script>
+    /*
+      ==========================================
+      基本設定
+      ==========================================
+    */
+
+    const STORAGE_KEY = "barcode_records_v3";
+
+    // 読み取り間隔
+    // 500ミリ秒 = 0.5秒
+    const SCAN_INTERVAL = 500;
+
+    let records = [];
+
+    let scanner = null;
+
+    let scanLocked = false;
+
+    let audioContext = null;
+
+
+    /*
+      ==========================================
+      HTML要素
+      ==========================================
+    */
+
+    const statusElement =
+      document.getElementById("status");
+
+    const latestElement =
+      document.getElementById("latest");
+
+    const countElement =
+      document.getElementById("count");
+
+    const historyElement =
+      document.getElementById("history");
+
+    const startButton =
+      document.getElementById("startButton");
+
+    const stopButton =
+      document.getElementById("stopButton");
+
+    const csvButton =
+      document.getElementById("csvButton");
+
+    const deleteButton =
+      document.getElementById("deleteButton");
+
+
+    /*
+      ==========================================
+      保存済みデータの読み込み
+      ==========================================
+    */
+
+    function loadRecords() {
+
+      try {
+
+        const savedData =
+          localStorage.getItem(STORAGE_KEY);
+
+        if (savedData) {
+
+          const parsedData =
+            JSON.parse(savedData);
+
+          if (Array.isArray(parsedData)) {
+            records = parsedData;
+          }
+
+        }
+
+      } catch (error) {
+
+        console.error(
+          "保存データ読込エラー",
+          error
+        );
+
+        records = [];
+
+      }
+
+    }
+
+
+    /*
+      ==========================================
+      データ保存
+      ==========================================
+    */
+
+    function saveRecords() {
+
+      try {
+
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(records)
+        );
+
+      } catch (error) {
+
+        console.error(
+          "データ保存エラー",
+          error
+        );
+
+        alert(
+          "データを保存できませんでした。"
+        );
+
+      }
+
+    }
+
+
+    /*
+      ==========================================
+      日時の整形
+      ==========================================
+    */
+
+    function zeroPadding(value) {
+
+      return String(value).padStart(
+        2,
+        "0"
+      );
+
+    }
+
+
+    function formatDate(date) {
+
+      return (
+        date.getFullYear()
+        + "/"
+        + zeroPadding(
+            date.getMonth() + 1
+          )
+        + "/"
+        + zeroPadding(
+            date.getDate()
+          )
+        + " "
+        + zeroPadding(
+            date.getHours()
+          )
+        + ":"
+        + zeroPadding(
+            date.getMinutes()
+          )
+        + ":"
+        + zeroPadding(
+            date.getSeconds()
+          )
+      );
+
+    }
+
+
+    /*
+      ==========================================
+      HTML特殊文字対策
+      ==========================================
+    */
+
+    function escapeHtml(value) {
+
+      return String(value)
+
+        .replaceAll(
+          "&",
+          "&amp;"
+        )
+
+        .replaceAll(
+          "<",
+          "&lt;"
+        )
+
+        .replaceAll(
+          ">",
+          "&gt;"
+        )
+
+        .replaceAll(
+          '"',
+          "&quot;"
+        )
+
+        .replaceAll(
+          "'",
+          "&#039;"
+        );
+
+    }
+
+
+    /*
+      ==========================================
+      画面表示更新
+      ==========================================
+    */
+
+    function renderRecords() {
+
+      countElement.textContent =
+        records.length;
+
+      if (records.length > 0) {
+
+        latestElement.textContent =
+          records[
+            records.length - 1
+          ].barcode;
+
+      } else {
+
+        latestElement.textContent =
+          "未読取";
+
+      }
+
+      historyElement.innerHTML = "";
+
+      const displayRecords =
+        records
+          .slice()
+          .reverse()
+          .slice(0, 30);
+
+      displayRecords.forEach(
+        function(record) {
+
+          const row =
+            document.createElement("tr");
+
+          row.innerHTML =
+            "<td>"
+            + escapeHtml(record.barcode)
+            + "</td>"
+
+            + "<td>"
+            + "1"
+            + "</td>"
+
+            + "<td>"
+            + escapeHtml(record.time)
+            + "</td>";
+
+          historyElement.appendChild(row);
+
+        }
+      );
+
+    }
+
+
+    /*
+      ==========================================
+      音声準備
+      ==========================================
+    */
+
+    function prepareAudio() {
+
+      try {
+
+        if (!audioContext) {
+
+          const AudioContextClass =
+            window.AudioContext
+            || window.webkitAudioContext;
+
+          if (!AudioContextClass) {
+            return;
+          }
+
+          audioContext =
+            new AudioContextClass();
+
+        }
+
+        if (
+          audioContext.state
+          === "suspended"
+        ) {
+
+          audioContext.resume();
+
+        }
+
+      } catch (error) {
+
+        console.error(
+          "音声初期化エラー",
+          error
+        );
+
+      }
+
+    }
+
+
+    /*
+      ==========================================
+      読取成功音
+      ==========================================
+    */
+
+    function playBeep() {
+
+      try {
+
+        prepareAudio();
+
+        if (!audioContext) {
+          return;
+        }
+
+        const oscillator =
+          audioContext.createOscillator();
+
+        const gainNode =
+          audioContext.createGain();
+
+        oscillator.type =
+          "square";
+
+        oscillator.frequency.setValueAtTime(
+          1600,
+          audioContext.currentTime
+        );
+
+        gainNode.gain.setValueAtTime(
+          0.0001,
+          audioContext.currentTime
+        );
+
+        gainNode.gain.exponentialRampToValueAtTime(
+          0.3,
+          audioContext.currentTime + 0.01
+        );
+
+        gainNode.gain.exponentialRampToValueAtTime(
+          0.0001,
+          audioContext.currentTime + 0.13
+        );
+
+        oscillator.connect(
+          gainNode
+        );
+
+        gainNode.connect(
+          audioContext.destination
+        );
+
+        oscillator.start();
+
+        oscillator.stop(
+          audioContext.currentTime + 0.14
+        );
+
+      } catch (error) {
+
+        console.error(
+          "音声再生エラー",
+          error
+        );
+
+      }
+
+    }
+
+
+    /*
+      ==========================================
+      読取成功時に画面を緑色にする
+      ==========================================
+    */
+
+    function flashSuccess() {
+
+      document.body.classList.add(
+        "scan-ok"
+      );
+
+      setTimeout(
+        function() {
+
+          document.body.classList.remove(
+            "scan-ok"
+          );
+
+        },
+        250
+      );
+
+    }
+
+
+    /*
+      ==========================================
+      バーコード読取成功時
+      ==========================================
+    */
+
+    function onScanSuccess(
+      decodedText,
+      decodedResult
+    ) {
+
+      /*
+        0.5秒の読取停止中なら
+        何もせず終了
+      */
+
+      if (scanLocked) {
+        return;
+      }
+
+
+      /*
+        読取停止を開始
+      */
+
+      scanLocked = true;
+
+
+      /*
+        読取結果を登録
+      */
+
+      const newRecord = {
+
+        barcode:
+          decodedText,
+
+        qty:
+          1,
+
+        time:
+          formatDate(
+            new Date()
+          )
+
+      };
+
+
+      records.push(
+        newRecord
+      );
+
+
+      saveRecords();
+
+      renderRecords();
+
+
+      /*
+        成功通知
+      */
+
+      playBeep();
+
+      flashSuccess();
+
+
+      /*
+        バイブレーション
+        iPhoneでは動作しない場合があります
+      */
+
+      if (navigator.vibrate) {
+
+        navigator.vibrate(
+          100
+        );
+
+      }
+
+
+      /*
+        0.5秒後に
+        次の読取を許可
+      */
+
+      setTimeout(
+        function() {
+
+          scanLocked = false;
+
+        },
+        SCAN_INTERVAL
+      );
+
+    }
+
+
+    /*
+      ==========================================
+      読取失敗時
+      ==========================================
+    */
+
+    function onScanFailure(errorMessage) {
+
+      /*
+        カメラ映像を解析している間は
+        頻繁に失敗通知が発生するため
+        何もしません
+      */
+
+    }
+
+
+    /*
+      ==========================================
+      カメラ開始
+      ==========================================
+    */
+
+    async function startCamera() {
+
+      if (scanner) {
+        return;
+      }
+
+      try {
+
+        prepareAudio();
+
+        startButton.disabled =
+          true;
+
+        statusElement.textContent =
+          "カメラを開始しています";
+
+
+        /*
+          読み取るバーコード種類
+        */
+
+        scanner =
+          new Html5Qrcode(
+            "reader",
+            {
+
+              formatsToSupport: [
+
+                Html5QrcodeSupportedFormats.EAN_13,
+
+                Html5QrcodeSupportedFormats.EAN_8,
+
+                Html5QrcodeSupportedFormats.CODE_128,
+
+                Html5QrcodeSupportedFormats.CODE_39,
+
+                Html5QrcodeSupportedFormats.ITF,
+
+                Html5QrcodeSupportedFormats.QR_CODE
+
+              ],
+
+              verbose:
+                false
+
+            }
+          );
+
+
+        /*
+          背面カメラを開始
+        */
+
+        await scanner.start(
+
+          {
+            facingMode:
+              "environment"
+          },
+
+          {
+            fps:
+              12,
+
+            qrbox: {
+              width:
+                300,
+
+              height:
+                160
+            },
+
+            aspectRatio:
+              1.7778,
+
+            disableFlip:
+              false
+          },
+
+          onScanSuccess,
+
+          onScanFailure
+
+        );
+
+
+        statusElement.textContent =
+          "読取中";
+
+      } catch (error) {
+
+        console.error(
+          "カメラ開始エラー",
+          error
+        );
+
+        scanner = null;
+
+        statusElement.textContent =
+          "カメラを開始できませんでした";
+
+        alert(
+          "カメラを開始できませんでした。\n\n"
+          + "次を確認してください。\n"
+          + "・Safariで開いている\n"
+          + "・カメラを許可している\n"
+          + "・HTTPSのURLで開いている"
+        );
+
+      } finally {
+
+        startButton.disabled =
+          false;
+
+      }
+
+    }
+
+
+    /*
+      ==========================================
+      カメラ停止
+      ==========================================
+    */
+
+    async function stopCamera() {
+
+      if (!scanner) {
+
+        statusElement.textContent =
+          "停止中";
+
+        return;
+
+      }
+
+      try {
+
+        await scanner.stop();
+
+        await scanner.clear();
+
+      } catch (error) {
+
+        console.error(
+          "カメラ停止エラー",
+          error
+        );
+
+      } finally {
+
+        scanner = null;
+
+        scanLocked = false;
+
+        statusElement.textContent =
+          "停止中";
+
+      }
+
+    }
+
+
+    /*
+      ==========================================
+      CSV用文字列処理
+      ==========================================
+    */
+
+    function csvEscape(value) {
+
+      const text =
+        String(value);
+
+      return (
+        '"'
+        + text.replaceAll(
+            '"',
+            '""'
+          )
+        + '"'
+      );
+
+    }
+
+
+    /*
+      ==========================================
+      CSV保存
+      ==========================================
+    */
+
+    function downloadCsv() {
+
+      if (records.length === 0) {
+
+        alert(
+          "保存するデータがありません。"
+        );
+
+        return;
+
+      }
+
+
+      const csvRows = [
+
+        [
+          "バーコード",
+          "数量",
+          "読取日時"
+        ]
+
+      ];
+
+
+      records.forEach(
+        function(record) {
+
+          csvRows.push(
+            [
+              record.barcode,
+              1,
+              record.time
+            ]
+          );
+
+        }
+      );
+
+
+      /*
+        Excelで文字化けしにくいように
+        UTF-8 BOMを追加
+      */
+
+      const csvText =
+
+        "\uFEFF"
+
+        + csvRows
+
+          .map(
+            function(row) {
+
+              return row
+
+                .map(csvEscape)
+
+                .join(",");
+
+            }
+          )
+
+          .join("\r\n");
+
+
+      const blob =
+        new Blob(
+          [csvText],
+          {
+            type:
+              "text/csv;charset=utf-8"
+          }
+        );
+
+
+      const downloadUrl =
+        URL.createObjectURL(
+          blob
+        );
+
+
+      const link =
+        document.createElement(
+          "a"
+        );
+
+
+      const now =
+        new Date();
+
+
+      const fileName =
+
+        "バーコード記録_"
+
+        + now.getFullYear()
+
+        + zeroPadding(
+            now.getMonth() + 1
+          )
+
+        + zeroPadding(
+            now.getDate()
+          )
+
+        + "_"
+
+        + zeroPadding(
+            now.getHours()
+          )
+
+        + zeroPadding(
+            now.getMinutes()
+          )
+
+        + zeroPadding(
+            now.getSeconds()
+          )
+
+        + ".csv";
+
+
+      link.href =
+        downloadUrl;
+
+      link.download =
+        fileName;
+
+
+      document.body.appendChild(
+        link
+      );
+
+
+      link.click();
+
+
+      link.remove();
+
+
+      setTimeout(
+        function() {
+
+          URL.revokeObjectURL(
+            downloadUrl
+          );
+
+        },
+        1000
+      );
+
+    }
+
+
+    /*
+      ==========================================
+      全データ削除
+      ==========================================
+    */
+
+    function deleteAllRecords() {
+
+      const answer =
+        confirm(
+          "保存中の全データを削除しますか？"
+        );
+
+
+      if (!answer) {
+        return;
+      }
+
+
+      records = [];
+
+
+      saveRecords();
+
+
+      renderRecords();
+
+
+      latestElement.textContent =
+        "未読取";
+
+    }
+
+
+    /*
+      ==========================================
+      ボタン設定
+      ==========================================
+    */
+
+    startButton.addEventListener(
+      "click",
+      startCamera
+    );
+
+
+    stopButton.addEventListener(
+      "click",
+      stopCamera
+    );
+
+
+    csvButton.addEventListener(
+      "click",
+      downloadCsv
+    );
+
+
+    deleteButton.addEventListener(
+      "click",
+      deleteAllRecords
+    );
+
+
+    /*
+      ==========================================
+      起動時処理
+      ==========================================
+    */
+
+    loadRecords();
+
+    renderRecords();
+
+  </script>
+
 </body>
 </html>
+```
